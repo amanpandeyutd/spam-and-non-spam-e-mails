@@ -1,0 +1,233 @@
+---
+title: "**BUAN6356_Homework3_Group5**"
+author: "*Aman Pandey,Dhruv Sawhney, Harsh Shah,  Lynda, Anisha *"
+date: "11/03/2019"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load Packages
+```{r loadPackages, warning=FALSE, message=FALSE, results='hide' }
+
+if(!require("pacman")) install.packages("pacman")
+pacman::p_load(caret, gains, leaps, tidyverse, 
+               MASS, ggplot2, mosaic, data.table, reshape)
+
+options(digits = 3)
+knitr::opts_chunk$set(echo = FALSE, fig.width=12, fig.height=6, fig.path = 'Figs/')
+theme_set(theme_classic())
+
+```
+
+## Load Data
+```{r Importing dataset}
+
+spambase <- fread("spambase.data")
+
+names.df <- read.csv("spambase.names", comment.char="|" , sep=":", header=FALSE)
+names.df <- as.matrix(names.df[-1,-2])
+names.df <- append(names.df, "Email_Class")
+colnames(spambase) <- names.df
+
+
+```
+
+## 1) Examine how each predictor differs between the spam and non-spam e-mails by comparing the spam-class(1) average and non-spam-class(0) average. Identify 10 predictors for which the difference between the spam-class average and non-spam class average is highest.
+```{r Question 1}
+
+spambase_0 <- spambase[spambase$Email_Class==0,]
+spambase_1 <-spambase[spambase$Email_Class==1,]
+
+Mean_spambase_0 <- colMeans(spambase_0[,-58])
+Mean_spambase_1 <- colMeans(spambase_1[,-58])
+
+Difference <- abs(Mean_spambase_0 - Mean_spambase_1)
+column_list <- sort.list(Difference,decreasing = TRUE)
+head(column_list,10)
+
+
+```
+
+1)**Explanation**: 
+Above output indicates the top 10 predictors for which the difference between the spam-class and non-spam class is the highest in the following order
+ 1. capital_run_length_total
+ 2. capital_run_length_longest
+ 3. capital_run_length_average
+ 4. word_freq_george
+ 5. word_freq_you
+ 6. word_freq_your
+ 7. word_freq_hp
+ 8. word_freq_free
+ 9. word_freq_hpl
+ 10.char_freq_!
+
+we have considered these predictors to perform linear discriminant analysis.
+
+## 2) Perform a linear discriminant analysis using the training dataset. Include only 10 predictors identified in the question above in the model.
+```{r Question 2}
+
+spambase_new = spambase[,c(57,56,55,27,19,21,25,16,26,52,58)]
+spambase_new$Email_Class <- factor(spambase_new$Email_Class, levels = c(0,1), 
+                            labels = c("Non-spam", "Spam"))
+spambase_new
+
+set.seed(42)
+
+# Split the data into training (80%) and validation/test set (20%)
+training.index <- createDataPartition(spambase_new$Email_Class, p = 0.8, list = FALSE)
+spambase.train <- spambase_new[training.index, ]
+spambase.valid <- spambase_new[-training.index, ]
+
+# Normalize the data
+# Estimate preprocessing parameters
+norm.values  <- preProcess(spambase.train, method = c("center", "scale"))
+# Transform the data using the estimated parameters
+spambase.train.norm <- predict(norm.values, spambase.train)
+spambase.valid.norm <- predict(norm.values, spambase.valid)
+
+
+lda_analysis <- lda(Email_Class~., data = spambase.train.norm)
+lda_analysis
+
+```
+
+2) **Explanation**: 
+above is the result of lda with 10 normalised predictors.
+
+## 3) What are the prior probabilities?
+```{r Question 3}
+lda_analysis$prior
+
+```
+
+3) **Explanation**: 
+In this case spam has prior probability of 0.6059 that means 60.59% records are spam and non-spam has prior probablity of 0.3940 that means 39.40% of records are non-spam.
+
+## 4) What are the coefficients of linear discriminants? Explain.
+```{r Question 4}
+
+lda_analysis$scaling
+
+```
+
+4) **Explanation**:  
+
+Coefficients of linear discriminants are the LD1 values. They separate the classes between spam and non-spam hence maximizing the difference between them. Here the LD1 represents the weights of each variable representation among the total representation. We have only 1 Linear Discriminant variable as we have only 2 variables as class of interest 
+
+## 5) Generate linear discriminants using your analysis. How are they used in classifying spams and non-spams?
+```{r Question 5}
+pred1 <- predict(lda_analysis, spambase.valid.norm)
+pred1.sample <- pred1$posterior[1:5,]
+pred1.sample
+
+#P_valid$posterior
+```
+
+5) **Explanation**:
+Whichever score is higher,we will assign the email to that category. For eg. In the first instance 0.87418 > 0.126 hence the email is classified as non-spam.
+
+## 6) How many linear discriminants are in the model? Why?
+```{r Question 6}
+lda_analysis$scaling
+
+```
+
+6) **Explanation**: 
+we have one liner discriminant in our model.Since we have 2 classes namely spam and non-spam, we will have only 1 LDA as the number of LDAs = number of classes -1. 
+
+## 7) Generate LDA plot using the training and validation data. What information is presented in these plots? How are they different?
+```{r Question 7}
+#p_train <- predict(lda_analysis,spambase.train.norm)
+
+#ldahist(data = p_train$x[,1], g=spambase.train.norm$Email_Class, main="lda with training data")
+
+#P_valid <- predict(lda_analysis,spambase.valid.norm)
+
+#ldahist(data = P_valid$x[,1], g=spambase.valid.norm$Email_Class, main="lda with validation data")
+
+#LDA plot - Training Data
+
+pred.train <- predict(lda_analysis, spambase.train.norm)
+
+lda.plot.training <- cbind(spambase.train.norm, pred.train$x)
+ggplot(lda.plot.training, aes(LD1, LD1)) +
+  geom_point(aes(color = Email_Class ))
+
+#LDA plot - Validation Data
+lda.plot.valid <- cbind(spambase.valid.norm, predict(lda_analysis, spambase.valid.norm)$x)
+ggplot(lda.plot.valid, aes(LD1, LD1)) +
+  geom_point(aes(color = Email_Class))
+
+plot(lda_analysis)
+
+
+
+
+```
+
+7) **Explanation** : 
+
+The scatter plot across the linear discriminants represent a straight 
+line with a positive slope. The posterier probability for being classified as spam increases as the values across LD1 increases. This can be inferred through the difference in the colour by the graphs that we 
+have obtained. 
+On plotting the lda graph We observe that the data is more towards the left of 0 which means all that data is classified in Non-Spam. Similarly for the spam group there is more data on the right of 0 hence that data is classified as SPAM. The same trend is observed for both Test and Validation data set hence we can infer that the model is good for class separation.
+
+## 8) Generate the relevant confusion matrix. What are the sensitivity and specificity?
+```{r Question 8}
+
+
+
+# Predict - using Validation data
+pred1.valid <- predict(lda_analysis, spambase.valid.norm) 
+
+#Table for predicted vs actual
+accuracy1 <- table(pred1.valid$class, spambase.valid.norm$Email_Class)  
+
+# Confusion matrix
+confusionMatrix(accuracy1)
+
+
+```
+
+8) **Explanation**: 
+
+From the confusion matrix analysis we can see that Senstivity value is 0.901 and specificity value is 0.674
+## 9) Generate lift and decile charts for the validation dataset and evaluate the effectiveness of the model in identifying spams.
+```{r Question 9}
+
+gain <- gains(as.numeric(spambase.valid.norm$Email_Class), pred1.valid$posterior[,2], groups = 10)
+
+  ### Plot Lift Chart
+spam_num <- as.numeric(spambase.valid.norm$Email_Class)
+plot(c(0,gain$cume.pct.of.total*sum(as.numeric(spambase.valid.norm$Email_Class)))~c(0,gain$cume.obs), 
+     xlab = "# cases", ylab = "Cumulative", main = "LDA Lift Chart", type = "l")
+lines(c(0,sum(spam_num))~c(0, dim(spambase.valid)[1]), lty = 5)
+
+  ### Plot decile-wise chart
+heights <- gain$mean.resp/mean(spam_num)
+midpoints <- barplot(heights, names.arg = gain$depth,  ylim = c(0,1.5), col = "seagreen",  
+                     xlab = "Percentile", ylab = "Mean Response", 
+                     main = "Decile lift chart")
+
+```
+
+9) **Explanation**: 
+
+From above lift chart we can interpret that area under the curve is large so our model is quite effective than naive benchmark.
+Also, Decile wise lift chart indicates that first two deciles are covering maximum variation and then gradually decreases to give us right skewed chart which indicates a good model.
+
+## 10) Does accuracy of model changes if you use a probability threshold of 0.2. Explain your answer.
+```{r Question 10}
+
+
+acc <- table(ifelse(pred1$posterior[,2] > 0.2, 1, 0), ifelse(as.numeric(spambase.valid.norm$Email_Class) >1 , 1, 0))
+confusionMatrix(acc)
+
+
+
+```
+
+10) **Explanation**: We can see that the accuracy of the model reduces when we set the threshold probability of 0.2. This happens as our model is now identifying an email to be spam when the probability is just over 0.2, so it is incorrectly classifying some emails as spam therefore reducing our model accuracy from 81.2% to 74.4%.
